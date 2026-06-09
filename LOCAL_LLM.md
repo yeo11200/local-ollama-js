@@ -22,16 +22,17 @@ The local API should be available at `http://127.0.0.1:11434`.
 
 ## 3. Pull a Model
 
-The project script defaults to `qwen2.5-coder:3b` because it is practical for code-oriented local use on machines with limited free memory.
+The project script defaults to `qwen2.5-coder:14b`, which is a better fit for project summaries, code review, and implementation planning on machines with enough memory.
+
+```bash
+ollama pull qwen2.5-coder:14b
+```
+
+On memory-constrained machines, pull a smaller model and pass it with `--model`:
 
 ```bash
 ollama pull qwen2.5-coder:3b
-```
-
-If the machine has enough memory, use a larger model and pass it with `--model`:
-
-```bash
-ollama pull qwen2.5-coder:7b-instruct
+llm --model qwen2.5-coder:3b "Summarize README.md."
 ```
 
 ## 4. Install the CLI
@@ -93,7 +94,7 @@ Use Cursor's OpenAI-compatible custom model settings.
 ```text
 Base URL: http://127.0.0.1:11434/v1
 API Key: ollama
-Model: qwen2.5-coder:3b
+Model: qwen2.5-coder:14b
 ```
 
 Before testing in Cursor, verify the local OpenAI-compatible endpoint:
@@ -103,7 +104,7 @@ curl http://127.0.0.1:11434/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ollama" \
   -d '{
-    "model": "qwen2.5-coder:3b",
+    "model": "qwen2.5-coder:14b",
     "messages": [{ "role": "user", "content": "Reply with OK only." }],
     "stream": false
   }'
@@ -123,9 +124,9 @@ Continue supports Ollama directly. Add a model like this in Continue's config:
 
 ```yaml
 models:
-  - name: qwen2.5-coder:3b
+  - name: qwen2.5-coder:14b
     provider: ollama
-    model: qwen2.5-coder:3b
+    model: qwen2.5-coder:14b
     apiBase: http://127.0.0.1:11434
 ```
 
@@ -137,7 +138,7 @@ Use an OpenAI-compatible provider:
 Provider: OpenAI Compatible
 Base URL: http://127.0.0.1:11434/v1
 API Key: ollama
-Model: qwen2.5-coder:3b
+Model: qwen2.5-coder:14b
 ```
 
 #### Roo Code
@@ -148,7 +149,7 @@ Use an OpenAI-compatible provider:
 Provider: OpenAI Compatible
 Base URL: http://127.0.0.1:11434/v1
 API Key: ollama
-Model: qwen2.5-coder:3b
+Model: qwen2.5-coder:14b
 ```
 
 ### Terminal Coding Tools
@@ -163,14 +164,14 @@ OPENAI_BASE_URL=http://127.0.0.1:11434/v1 \
 opencode
 ```
 
-Select or configure the model as `qwen2.5-coder:3b`.
+Select or configure the model as `qwen2.5-coder:14b`.
 
 #### Aider
 
 Aider can call Ollama directly:
 
 ```bash
-aider --model ollama/qwen2.5-coder:3b
+aider --model ollama/qwen2.5-coder:14b
 ```
 
 If direct Ollama mode does not work in the installed Aider version, use the OpenAI-compatible endpoint:
@@ -178,7 +179,7 @@ If direct Ollama mode does not work in the installed Aider version, use the Open
 ```bash
 OPENAI_API_KEY=ollama \
 OPENAI_BASE_URL=http://127.0.0.1:11434/v1 \
-aider --model openai/qwen2.5-coder:3b
+aider --model openai/qwen2.5-coder:14b
 ```
 
 ### Claude Code
@@ -189,7 +190,7 @@ Claude Code can be pointed at Ollama's Anthropic-compatible endpoint:
 ANTHROPIC_BASE_URL=http://127.0.0.1:11434 \
 ANTHROPIC_AUTH_TOKEN=ollama \
 ANTHROPIC_API_KEY=ollama \
-claude --model qwen2.5-coder:3b
+claude --model qwen2.5-coder:14b
 ```
 
 For a persistent shortcut, add this to `~/.zshrc`:
@@ -199,7 +200,7 @@ claude-ollama() {
   ANTHROPIC_BASE_URL=http://127.0.0.1:11434 \
   ANTHROPIC_AUTH_TOKEN=ollama \
   ANTHROPIC_API_KEY=ollama \
-  command claude --model "${1:-qwen2.5-coder:3b}" "${@:2}"
+  command claude --model "${1:-qwen2.5-coder:14b}" "${@:2}"
 }
 ```
 
@@ -228,7 +229,7 @@ Then rerun the command above.
 For Codex CLI, configure a local OpenAI-compatible provider in `~/.codex/config.toml`:
 
 ```toml
-model = "qwen2.5-coder:3b"
+model = "qwen2.5-coder:14b"
 model_provider = "local_ollama"
 
 [model_providers.local_ollama]
