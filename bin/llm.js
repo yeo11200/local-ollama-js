@@ -5,7 +5,7 @@ import { extname, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
-const DEFAULT_MODEL = "qwen2.5-coder:14b";
+const DEFAULT_MODEL = "qwen2.5-coder:32b";
 const DEFAULT_HOST = "http://127.0.0.1:11434";
 const DEFAULT_SESSION = "default";
 const MAX_CONTEXT_MESSAGES = 20;

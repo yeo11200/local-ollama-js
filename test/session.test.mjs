@@ -110,12 +110,12 @@ test("builds user content with project context", async () => {
 
 test("saves, loads, lists, and deletes sessions", async () => {
   await withTempHome(async () => {
-    const session = await loadSession("work", "qwen2.5-coder:3b");
+    const session = await loadSession("work", "qwen2.5-coder:32b");
 
     session.messages.push({ role: "user", content: "hello" });
     await saveSession(session);
 
-    const loaded = await loadSession("work", "qwen2.5-coder:3b");
+    const loaded = await loadSession("work", "qwen2.5-coder:32b");
     assert.equal(loaded.id, "work");
     assert.equal(loaded.messages[0].content, "hello");
     assert.deepEqual(await listSessions(), ["work"]);
