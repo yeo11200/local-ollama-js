@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import {
   buildMessages,
   buildUserContent,
+  collectProjectContext,
   createOptions,
   deleteSession,
   getSessionPath,
@@ -45,6 +46,7 @@ test("parses chat options", () => {
   const options = createOptions([
     "--session",
     "work",
+    "--project",
     "--file",
     "README.md",
     "--file=package.json",
@@ -55,9 +57,55 @@ test("parses chat options", () => {
   ]);
 
   assert.equal(options.session, "work");
+  assert.equal(options.project, true);
   assert.deepEqual(options.files, ["README.md", "package.json"]);
   assert.equal(options.model, "llama3.2:3b");
   assert.deepEqual(options.positional, ["hello", "there"]);
+});
+
+test("collects bounded project context from useful files", async () => {
+  await withTempHome(async (dir) => {
+    await mkdir(join(dir, "src"), { recursive: true });
+    await mkdir(join(dir, "node_modules", "ignored"), { recursive: true });
+    await mkdir(join(dir, "dist"), { recursive: true });
+
+    await writeFile(join(dir, "README.md"), "# Project\n");
+    await writeFile(join(dir, "package.json"), "{\"name\":\"example\"}\n");
+    await writeFile(join(dir, "src", "index.js"), "export const value = 1;\n");
+    await writeFile(join(dir, "node_modules", "ignored", "index.js"), "ignored dependency\n");
+    await writeFile(join(dir, "dist", "bundle.js"), "ignored build\n");
+    await writeFile(join(dir, "package-lock.json"), "ignored lockfile\n");
+    await writeFile(join(dir, "logo.png"), "ignored image\n");
+
+    const context = await collectProjectContext({ rootDir: dir });
+
+    assert.match(context, /Project root:/);
+    assert.match(context, /File: README\.md/);
+    assert.match(context, /File: package\.json/);
+    assert.match(context, /File: src\/index\.js/);
+    assert.doesNotMatch(context, /node_modules/);
+    assert.doesNotMatch(context, /dist\/bundle\.js/);
+    assert.doesNotMatch(context, /package-lock\.json/);
+    assert.doesNotMatch(context, /logo\.png/);
+  });
+});
+
+test("builds user content with project context", async () => {
+  await withTempHome(async (dir) => {
+    await writeFile(join(dir, "README.md"), "# Example Project\n");
+
+    const previousCwd = process.cwd();
+    process.chdir(dir);
+
+    try {
+      const content = await buildUserContent("Summarize this.", [], { project: true });
+      assert.match(content, /Project root:/);
+      assert.match(content, /# Example Project/);
+      assert.match(content, /Summarize this\./);
+    } finally {
+      process.chdir(previousCwd);
+    }
+  });
 });
 
 test("saves, loads, lists, and deletes sessions", async () => {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { mkdir, readFile, realpath, readdir, rm, stat, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { extname, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -9,6 +9,64 @@ const DEFAULT_MODEL = "qwen2.5-coder:14b";
 const DEFAULT_HOST = "http://127.0.0.1:11434";
 const DEFAULT_SESSION = "default";
 const MAX_CONTEXT_MESSAGES = 20;
+const MAX_PROJECT_FILES = 30;
+const MAX_PROJECT_FILE_CHARS = 12_000;
+const MAX_PROJECT_CONTEXT_CHARS = 80_000;
+
+const EXCLUDED_PROJECT_DIRS = new Set([
+  ".cache",
+  ".git",
+  ".next",
+  ".turbo",
+  "build",
+  "coverage",
+  "dist",
+  "node_modules",
+  "out",
+  "vendor",
+]);
+
+const EXCLUDED_PROJECT_FILES = new Set([
+  ".DS_Store",
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+]);
+
+const BINARY_PROJECT_EXTENSIONS = new Set([
+  ".7z",
+  ".a",
+  ".avi",
+  ".bin",
+  ".bmp",
+  ".class",
+  ".dmg",
+  ".doc",
+  ".docx",
+  ".eot",
+  ".exe",
+  ".gif",
+  ".gz",
+  ".ico",
+  ".jpeg",
+  ".jpg",
+  ".mov",
+  ".mp3",
+  ".mp4",
+  ".otf",
+  ".pdf",
+  ".png",
+  ".so",
+  ".tar",
+  ".ttf",
+  ".wasm",
+  ".wav",
+  ".webm",
+  ".webp",
+  ".woff",
+  ".woff2",
+  ".zip",
+]);
 
 const systemPrompt = [
   "You are a local coding assistant for the current repository.",
@@ -20,6 +78,7 @@ const systemPrompt = [
 const printHelp = () => {
   console.log(`Usage:
   llm "Summarize this repository."
+  llm --project "Summarize the current project."
   llm --session work "Continue from our previous discussion."
   llm --file README.md "Review this file."
   llm --reset-session work
@@ -28,6 +87,7 @@ const printHelp = () => {
 
 Options:
   --session <name>       Session name for remembered conversation (default: ${DEFAULT_SESSION})
+  --project              Include selected files from the current working directory
   --file <path>          Include a local file as context. Can be repeated.
   --model <name>         Ollama model name (default: ${DEFAULT_MODEL})
   --host <url>           Ollama host (default: ${DEFAULT_HOST})
@@ -50,6 +110,7 @@ const createOptions = (argv) => {
   const options = {
     files: [],
     positional: [],
+    project: false,
     json: false,
     help: false,
     listSessions: false,
@@ -69,6 +130,8 @@ const createOptions = (argv) => {
       options.json = true;
     } else if (arg === "--list-sessions") {
       options.listSessions = true;
+    } else if (arg === "--project") {
+      options.project = true;
     } else if (arg === "--session") {
       options.session = readOptionValue(argv, index, arg);
       index += 1;
@@ -224,8 +287,108 @@ const readFileContexts = async (files) => {
   return contexts;
 };
 
-const buildUserContent = async (prompt, files) => {
+const normalizeRelativePath = (path) => path.split(sep).join("/");
+
+const isExcludedProjectEntry = (entryName, entryPath) => {
+  if (EXCLUDED_PROJECT_FILES.has(entryName)) {
+    return true;
+  }
+
+  if (BINARY_PROJECT_EXTENSIONS.has(extname(entryName).toLowerCase())) {
+    return true;
+  }
+
+  return entryPath.includes(`${sep}.git${sep}`) || entryPath.includes(`${sep}node_modules${sep}`);
+};
+
+const getProjectFileScore = (relativePath) => {
+  const basename = relativePath.split("/").at(-1);
+
+  if (basename === "README.md") return 0;
+  if (basename === "package.json") return 1;
+  if (/^(tsconfig|vite\.config|next\.config|astro\.config|svelte\.config)/.test(basename)) return 2;
+  if (/^(src|app|lib|bin|scripts|test|tests|docs)\//.test(relativePath)) return 3;
+
+  return 10;
+};
+
+const collectProjectFiles = async (rootDir) => {
+  const root = resolve(rootDir);
+  const files = [];
+
+  const visit = async (dir) => {
+    const entries = await readdir(dir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const absolutePath = join(dir, entry.name);
+
+      if (entry.isDirectory()) {
+        if (!EXCLUDED_PROJECT_DIRS.has(entry.name)) {
+          await visit(absolutePath);
+        }
+        continue;
+      }
+
+      if (!entry.isFile() || isExcludedProjectEntry(entry.name, absolutePath)) {
+        continue;
+      }
+
+      const relativePath = normalizeRelativePath(relative(root, absolutePath));
+      files.push({
+        absolutePath,
+        relativePath,
+        score: getProjectFileScore(relativePath),
+      });
+    }
+  };
+
+  await visit(root);
+
+  return files
+    .sort((a, b) => a.score - b.score || a.relativePath.localeCompare(b.relativePath))
+    .slice(0, MAX_PROJECT_FILES);
+};
+
+const collectProjectContext = async ({
+  rootDir = process.cwd(),
+  maxFiles = MAX_PROJECT_FILES,
+  maxFileChars = MAX_PROJECT_FILE_CHARS,
+  maxContextChars = MAX_PROJECT_CONTEXT_CHARS,
+} = {}) => {
+  const root = resolve(rootDir);
+  const files = (await collectProjectFiles(root)).slice(0, maxFiles);
+  const parts = [`Project root: ${root}`, `Selected files: ${files.map((file) => file.relativePath).join(", ")}`];
+  let remainingChars = maxContextChars - parts.join("\n").length;
+
+  for (const file of files) {
+    if (remainingChars <= 0) {
+      break;
+    }
+
+    try {
+      const raw = await readFile(file.absolutePath, "utf8");
+      const content = raw.slice(0, Math.min(maxFileChars, remainingChars));
+      const truncated = raw.length > content.length ? "\n[truncated]" : "";
+      const section = `File: ${file.relativePath}\n\n${content}${truncated}`;
+      parts.push(section);
+      remainingChars -= section.length;
+    } catch (error) {
+      if (error?.code !== "EISDIR") {
+        throw error;
+      }
+    }
+  }
+
+  return parts.join("\n\n---\n\n");
+};
+
+const buildUserContent = async (prompt, files, { project = false } = {}) => {
   const parts = await readFileContexts(files);
+
+  if (project) {
+    parts.push(await collectProjectContext());
+  }
+
   parts.push(prompt);
   return parts.join("\n\n---\n\n");
 };
@@ -300,7 +463,7 @@ const run = async (argv = process.argv.slice(2)) => {
   }
 
   const session = await loadSession(options.session, options.model);
-  const userContent = await buildUserContent(prompt, options.files);
+  const userContent = await buildUserContent(prompt, options.files, { project: options.project });
   const messages = buildMessages(session.messages, userContent);
   const data = await chat({ host: options.host, model: options.model, messages });
   const assistantContent = data.message?.content ?? "";
@@ -351,6 +514,7 @@ if (await isDirectRun()) {
 export {
   buildMessages,
   buildUserContent,
+  collectProjectContext,
   createOptions,
   deleteSession,
   getSessionPath,

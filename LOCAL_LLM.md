@@ -51,6 +51,15 @@ Use the default session:
 llm "Summarize this repository."
 ```
 
+Include selected files from the current working directory:
+
+```bash
+llm --project "Summarize this project."
+llm --project "What should be improved in this codebase?"
+```
+
+Project mode is explicit. A plain `llm "..."` call does not automatically read the current directory, so use `--project` when the question needs repository context.
+
 Continue a named session:
 
 ```bash
