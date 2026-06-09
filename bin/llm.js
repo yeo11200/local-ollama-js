@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
-import { basename, join, resolve } from "node:path";
+import { mkdir, readFile, realpath, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { homedir } from "node:os";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const DEFAULT_MODEL = "qwen2.5-coder:3b";
 const DEFAULT_HOST = "http://127.0.0.1:11434";
@@ -328,9 +328,15 @@ const run = async (argv = process.argv.slice(2)) => {
   }
 };
 
-const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isDirectRun = async () => {
+  if (!process.argv[1]) {
+    return false;
+  }
 
-if (isDirectRun) {
+  return (await realpath(process.argv[1])) === (await realpath(fileURLToPath(import.meta.url)));
+};
+
+if (await isDirectRun()) {
   run().catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
     console.error(message);
