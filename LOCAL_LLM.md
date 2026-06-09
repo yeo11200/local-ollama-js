@@ -34,25 +34,52 @@ If the machine has enough memory, use a larger model and pass it with `--model`:
 ollama pull qwen2.5-coder:7b-instruct
 ```
 
-## 4. Ask Questions From This Repository
+## 4. Install the CLI
 
 ```bash
-node scripts/ollama-chat.mjs "Summarize this repository."
+npm install -g .
 ```
 
-Include one file as context:
+This installs the `llm` command from this repository.
+
+## 5. Ask Questions With Memory
+
+Use the default session:
 
 ```bash
-node scripts/ollama-chat.mjs --file README.md "Review this file."
+llm "Summarize this repository."
+```
+
+Continue a named session:
+
+```bash
+llm --session work "Continue from our previous discussion."
+```
+
+Include one or more files as context:
+
+```bash
+llm --file README.md "Review this file."
+llm --file README.md --file package.json "Compare these files."
 ```
 
 Use a different model:
 
 ```bash
-node scripts/ollama-chat.mjs --model llama3.2:3b "Summarize README.md."
+llm --model llama3.2:3b "Summarize README.md."
 ```
 
-## 5. Connect Other Coding Tools
+Manage sessions:
+
+```bash
+llm --list-sessions
+llm --show-session work
+llm --reset-session work
+```
+
+Sessions are stored at `~/.local-ollama-js/sessions/<name>.json`. Each chat sends the latest 20 saved messages to Ollama so the model can remember recent context without making prompts grow without bound.
+
+## 6. Connect Other Coding Tools
 
 Ollama exposes two useful local API styles:
 
@@ -222,6 +249,7 @@ OLLAMA_API_KEY=ollama codex
 - This does not send code to external LLM services.
 - The script calls Ollama's local `/api/chat` endpoint only.
 - Set `OLLAMA_MODEL` or `OLLAMA_HOST` to change defaults without passing flags every time.
+- Set `LOCAL_OLLAMA_JS_HOME` to change where sessions are stored.
 - On this macOS setup, the Homebrew formula was installed but its `llama-server` runner was missing. If Ollama returns `llama-server binary not found` or `signal: killed`, run:
 
 ```bash

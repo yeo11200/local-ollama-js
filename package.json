@@ -1,0 +1,15 @@
+{
+  "name": "local-ollama-js",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "bin": {
+    "llm": "./bin/llm.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
