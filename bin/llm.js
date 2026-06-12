@@ -5,7 +5,7 @@ import { extname, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
-const DEFAULT_MODEL = "deepseek-coder-v2:16b";
+const DEFAULT_MODEL = "qwen2.5-coder:14b";
 const DEFAULT_HOST = "http://127.0.0.1:11434";
 const DEFAULT_SESSION = "default";
 const MAX_CONTEXT_MESSAGES = 20;
@@ -77,6 +77,8 @@ const systemPrompt = [
 
 const printHelp = () => {
   console.log(`Usage:
+  llm                    Start interactive agent mode (Claude Code-style REPL)
+  llm --chat             Same as above, combinable with --model/--host/--session
   llm "Summarize this repository."
   llm --project "Summarize the current project."
   llm --session work "Continue from our previous discussion."
@@ -86,6 +88,7 @@ const printHelp = () => {
   llm --show-session work
 
 Options:
+  --chat                 Start interactive agent mode explicitly
   --session <name>       Session name for remembered conversation (default: ${DEFAULT_SESSION})
   --project              Include selected files from the current working directory
   --file <path>          Include a local file as context. Can be repeated.
@@ -112,6 +115,7 @@ const createOptions = (argv) => {
     positional: [],
     project: false,
     json: false,
+    chat: false,
     help: false,
     listSessions: false,
     resetSession: undefined,
@@ -128,15 +132,19 @@ const createOptions = (argv) => {
       options.help = true;
     } else if (arg === "--json") {
       options.json = true;
+    } else if (arg === "--chat") {
+      options.chat = true;
     } else if (arg === "--list-sessions") {
       options.listSessions = true;
     } else if (arg === "--project") {
       options.project = true;
     } else if (arg === "--session") {
       options.session = readOptionValue(argv, index, arg);
+      options.sessionExplicit = true;
       index += 1;
     } else if (arg.startsWith("--session=")) {
       options.session = arg.slice("--session=".length);
+      options.sessionExplicit = true;
     } else if (arg === "--file") {
       options.files.push(readOptionValue(argv, index, arg));
       index += 1;
@@ -434,8 +442,20 @@ const printSession = async (sessionName) => {
 const run = async (argv = process.argv.slice(2)) => {
   const options = createOptions(argv);
 
-  if (options.help || argv.length === 0) {
+  if (options.help) {
     printHelp();
+    return;
+  }
+
+  // No arguments (or --chat): start the interactive agent REPL, like
+  // running `claude` with no arguments.
+  if (options.chat || argv.length === 0) {
+    const { startRepl } = await import("../src/repl.js");
+    await startRepl({
+      host: options.host,
+      model: options.model,
+      session: options.sessionExplicit ? options.session : undefined,
+    });
     return;
   }
 

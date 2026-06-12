@@ -22,10 +22,11 @@ The local API should be available at `http://127.0.0.1:11434`.
 
 ## 3. Pull a Model
 
-The project script defaults to `deepseek-coder-v2:16b`, a lighter 16B-class coding model for project summaries, code review, and implementation planning.
+The project script defaults to `qwen2.5-coder:14b`, a 14B coding model with native tool calling - the best fit for the interactive agent mode.
 
 ```bash
-ollama pull deepseek-coder-v2:16b
+ollama pull qwen2.5-coder:14b
+ollama pull nomic-embed-text   # embeddings for agent-mode RAG
 ```
 
 ## 4. Install the CLI
@@ -36,7 +37,92 @@ npm install -g .
 
 This installs the `llm` command from this repository.
 
-## 5. Ask Questions With Memory
+## 5. Interactive Agent Mode (Claude Code style)
+
+Run `llm` with no arguments inside any project to start an interactive agent
+session:
+
+```bash
+cd your-project
+llm
+```
+
+What you get:
+
+- **Conversation loop** with streamed responses, like Claude Code.
+- **Tools**: the model can read, search, write, and edit files and run shell
+  commands in the current directory. Destructive actions (write_file,
+  edit_file, run_command) ask for approval first: `y` once, `a` always for
+  that tool, `n` decline.
+- **Automatic RAG**: project files are chunked and embedded with
+  `nomic-embed-text` (set `OLLAMA_EMBED_MODEL` to change). The index is cached
+  in `~/.local-ollama-js/rag/` and refreshed incrementally on startup. The
+  top matching chunks are injected into every question. If no embedding model
+  is pulled, it falls back to keyword matching automatically.
+- **Automatic sessions**: the session name is derived from the directory, so
+  running `llm` in the same project resumes the previous conversation.
+- **Model independence**: models with native tool calling (qwen2.5-coder,
+  llama3.1, ...) use Ollama's tools API; models without it (deepseek-coder-v2)
+  automatically switch to a text-based tool protocol. Switch models mid-session
+  with `/model`.
+
+For the best agent experience, pull the embedding model once:
+
+```bash
+ollama pull nomic-embed-text
+```
+
+Slash commands inside the session:
+
+```text
+/help                 Show commands
+/model <name>         Switch model (keeps history)
+/models               List installed Ollama models
+/session [name]       Show or switch session
+/sessions             List saved sessions
+/reset                Clear the current session
+/rag on|off           Toggle retrieval context
+/reindex              Rebuild the RAG index
+/tools on|off         Toggle agent tools
+/file <path>          Attach a file to the next prompt
+/skills               Rescan and list installed skills
+/skill <name>         Load a skill into the next prompt
+/exit                 Quit
+```
+
+### Skills (Claude Code style)
+
+Skills are reusable instruction files the agent loads on demand. Create one:
+
+```bash
+mkdir -p ~/.local-ollama-js/skills/git-commit
+cat > ~/.local-ollama-js/skills/git-commit/SKILL.md <<'EOF'
+---
+name: git-commit
+description: 한국어 git 커밋 메시지를 팀 컨벤션에 맞게 작성
+---
+
+# 커밋 메시지 작성 규칙
+1. ...
+EOF
+```
+
+- Global skills: `~/.local-ollama-js/skills/<name>/SKILL.md`
+- Project skills: `<project>/.llm/skills/<name>/SKILL.md` (override global by name)
+- Only names and descriptions are kept in the system prompt; the body loads
+  on demand (progressive disclosure), keeping local-model context small.
+
+Three activation paths:
+
+1. **Automatic**: when your prompt strongly matches a skill's name/description
+   (2+ keyword hits), the skill body is injected automatically
+   (`⚡ skill loaded: ...`). A weak match only nudges the model to call the
+   `use_skill` tool.
+2. **Manual**: `/skill git-commit` queues the skill for the next prompt.
+   Tab-completion works (`/skill g<Tab>`).
+3. **Model-invoked**: the agent can call the `use_skill` tool itself.
+
+## 6. Ask Questions With Memory (one-shot mode)
 
 Use the default session:
 
@@ -82,7 +168,7 @@ llm --reset-session work
 
 Sessions are stored at `~/.local-ollama-js/sessions/<name>.json`. Each chat sends the latest 20 saved messages to Ollama so the model can remember recent context without making prompts grow without bound.
 
-## 6. Connect Other Coding Tools
+## 7. Connect Other Coding Tools
 
 Ollama exposes two useful local API styles:
 
